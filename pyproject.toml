@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "http-header-fuzzer"
+version = "1.0.0"
+description = "A modular HTTP header fuzzer for security testing"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+dependencies = [
+    "aiohttp>=3.9",
+    "rich>=13.0",
+]
+
+[project.scripts]
+httpfuzz = "fuzzer.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["fuzzer*"]

@@ -1,0 +1,77 @@
+# Standard request headers
+Accept
+Accept-Charset
+Accept-Encoding
+Accept-Language
+Authorization
+Cache-Control
+Connection
+Content-Encoding
+Content-Length
+Content-Type
+Cookie
+Date
+Expect
+Host
+If-Match
+If-Modified-Since
+If-None-Match
+If-Range
+If-Unmodified-Since
+Max-Forwards
+Origin
+Pragma
+Range
+Referer
+TE
+Transfer-Encoding
+Upgrade
+User-Agent
+Via
+
+# Security / proxy headers
+X-Forwarded-For
+X-Forwarded-Host
+X-Forwarded-Proto
+X-Real-IP
+X-Originating-IP
+X-Remote-IP
+X-Remote-Addr
+X-Client-IP
+X-Cluster-Client-IP
+CF-Connecting-IP
+True-Client-IP
+Forwarded
+
+# CORS / CSRF
+Access-Control-Request-Method
+Access-Control-Request-Headers
+X-CSRF-Token
+X-XSRF-Token
+
+# Custom / application
+X-Requested-With
+X-Custom-Header
+X-Api-Key
+X-Auth-Token
+X-Correlation-ID
+X-Request-ID
+X-Trace-ID
+
+# Content negotiation
+Accept-Datetime
+Content-Disposition
+Content-Language
+Content-Location
+Content-MD5
+
+# Caching
+Age
+ETag
+Expires
+Warning
+
+# WebSocket
+Sec-WebSocket-Key
+Sec-WebSocket-Version
+Sec-WebSocket-Protocol
