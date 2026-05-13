@@ -109,6 +109,14 @@ httpfuzz -u https://target.com --exploitable --output json -o top_findings.json
 3. Compares each response to the baseline
 4. Flags anything that looks different - status change, size shift, slow response, payload reflected back, or server error
 
+
+## Google Indexing
+
+
+<meta name="google-site-verification" content="DNHYzqfLICLABbjMiGIun7AZplBxoN1G02vLMjYdGIM" />
+
+
 ## License
 
 MIT
+
