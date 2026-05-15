@@ -80,6 +80,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--skip-verify", action="store_true",
         help="Skip TLS certificate verification",
     )
+    p.add_argument(
+        "--raw", action="store_true",
+        help="Use raw TCP sockets instead of aiohttp (bypasses client-side "
+        "header validation — sends CRLF, null bytes, etc. to the wire)",
+    )
 
     # Output
     p.add_argument(
@@ -151,6 +156,7 @@ def main(argv: list[str] | None = None) -> None:
         delay=args.delay,
         proxy=args.proxy,
         skip_verify=args.skip_verify,
+        raw=args.raw,
         output_format=args.output,
         output_file=args.output_file,
         show_all=args.show_all,

@@ -32,6 +32,7 @@ class FuzzConfig:
     delay: float = 0.0
     proxy: str | None = None
     skip_verify: bool = False
+    raw: bool = False
     output_format: Literal["console", "json", "csv"] = "console"
     output_file: str | None = None
     show_all: bool = False

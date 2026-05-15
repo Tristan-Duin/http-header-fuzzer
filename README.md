@@ -55,30 +55,31 @@ All strategies run by default. Use `-s` to pick specific ones.
 
 ```bash
 # JSON
-httpfuzz -u https://target.com --output json -o results.json
+httpfuzz -u https://example.com --output json -o results.json
 
 # CSV
-httpfuzz -u https://target.com --output csv -o results.csv
+httpfuzz -u https://example.com --output csv -o results.csv
 ```
 
 ## Tune performance
 
 ```bash
 # 50 concurrent requests, 5 second timeout
-httpfuzz -u https://target.com -c 50 -t 5
+httpfuzz -u https://example.com -c 50 -t 5
 
 # Add delay between requests (seconds)
-httpfuzz -u https://target.com --delay 0.1
+httpfuzz -u https://example.com --delay 0.1
 ```
 
 ## Use a proxy
 
 ```bash
-httpfuzz -u https://target.com --proxy http://127.0.0.1:8080
+httpfuzz -u https://example.com --proxy http://127.0.0.1:8080
 ```
 
 ## Other useful flags
 
+- `--raw` - use raw TCP sockets instead of aiohttp (see below)
 - `--exploitable` - only show the most exploitable findings (CRIT/HIGH severity, deduplicated)
 - `--all` - show every result, not just the interesting ones
 - `--method POST` - use a different HTTP method
@@ -88,18 +89,30 @@ httpfuzz -u https://target.com --proxy http://127.0.0.1:8080
 - `--header-wordlist file.txt` - use your own list of header names
 - `--retries N` - retry failed requests (default: 2)
 
+## Raw socket mode
+
+By default, the fuzzer uses `aiohttp` which blocks payloads containing newlines and null bytes before they leave your machine. Use `--raw` to bypass that and send everything over raw TCP:
+
+```bash
+httpfuzz -u http://example.com --raw
+```
+
+This actually sends CRLF injection, null bytes, and other malformed data to the server instead of having them rejected client-side. Use this when you want to test how the server's parser handles truly broken input.
+
+Works with HTTPS too (raw TLS sockets). Does not support `--proxy`.
+
 ## Filter to what matters
 
 After a full scan, cut the noise and see only what's most likely exploitable:
 ```bash
-httpfuzz -u https://target.com --exploitable
+httpfuzz -u https://example.com --exploitable
 ```
 
 This filters to CRIT and HIGH severity findings (server errors, reflected payloads) and deduplicates per header + strategy so you only see the best hit for each.
 
 Works with all output formats:
 ```bash
-httpfuzz -u https://target.com --exploitable --output json -o top_findings.json
+httpfuzz -u https://example.com --exploitable --output json -o top_findings.json
 ```
 
 ## How it works

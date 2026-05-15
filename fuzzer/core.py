@@ -20,6 +20,7 @@ from rich.table import Table
 from . import payloads
 from .analyzer import analyze
 from .config import FuzzConfig
+from .raw_sender import send_baseline_raw, send_fuzzed_raw
 from .reporter import Reporter
 from .sender import build_ssl_context, send_baseline, send_fuzzed
 
@@ -73,6 +74,8 @@ def _print_config_summary(
         grid.add_row("Delay", f"{config.delay}s")
     if config.skip_verify:
         grid.add_row("TLS Verify", "[yellow]disabled[/]")
+    if config.raw:
+        grid.add_row("Mode", "[bold yellow]RAW sockets[/] [dim](bypasses client validation)[/]")
 
     console.print(Panel(grid, title="[bold cyan]Scan Configuration[/]", border_style="cyan", expand=False))
 
@@ -84,86 +87,95 @@ async def run(config: FuzzConfig) -> None:
 
     header_names = _load_header_names(config)
 
-    ssl_ctx = build_ssl_context(config.skip_verify)
-    connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+    # 1. Baseline
+    console.print("[dim]Sending baseline request…[/]")
+    try:
+        if config.raw:
+            baseline = await send_baseline_raw(config)
+        else:
+            ssl_ctx = build_ssl_context(config.skip_verify)
+            connector = aiohttp.TCPConnector(ssl=ssl_ctx)
+            _session = aiohttp.ClientSession(connector=connector)
+            baseline = await send_baseline(config, _session)
+    except Exception as exc:
+        console.print(f"\n[bold red]✗ Baseline request failed:[/] {exc}")
+        sys.exit(1)
 
-    async with aiohttp.ClientSession(connector=connector) as session:
-        # 1. Baseline
-        console.print("[dim]Sending baseline request…[/]")
-        try:
-            baseline = await send_baseline(config, session)
-        except Exception as exc:
-            console.print(f"\n[bold red]✗ Baseline request failed:[/] {exc}")
-            sys.exit(1)
+    baseline_grid = Table.grid(padding=(0, 3))
+    baseline_grid.add_column(style="bold white")
+    baseline_grid.add_column()
+    baseline_grid.add_row("Status", f"[green]{baseline.status_code}[/]")
+    baseline_grid.add_row("Body", f"{baseline.body_length:,} bytes")
+    baseline_grid.add_row("Time", f"{baseline.response_time:.3f}s")
+    console.print(Panel(
+        baseline_grid,
+        title="[bold green]✓ Baseline Response[/]",
+        border_style="green",
+        expand=False,
+    ))
 
-        baseline_grid = Table.grid(padding=(0, 3))
-        baseline_grid.add_column(style="bold white")
-        baseline_grid.add_column()
-        baseline_grid.add_row("Status", f"[green]{baseline.status_code}[/]")
-        baseline_grid.add_row("Body", f"{baseline.body_length:,} bytes")
-        baseline_grid.add_row("Time", f"{baseline.response_time:.3f}s")
-        console.print(Panel(
-            baseline_grid,
-            title="[bold green]✓ Baseline Response[/]",
-            border_style="green",
-            expand=False,
-        ))
+    # 2. Build payload list (materialised so we can show a progress bar)
+    payload_list = list(payloads.generate(config.strategies, config.custom_payloads_file))
+    total_requests = len(header_names) * len(payload_list)
 
-        # 2. Build payload list (materialised so we can show a progress bar)
-        payload_list = list(payloads.generate(config.strategies, config.custom_payloads_file))
-        total_requests = len(header_names) * len(payload_list)
+    _print_config_summary(console, config, header_names, len(payload_list), total_requests)
+    console.print()
 
-        _print_config_summary(console, config, header_names, len(payload_list), total_requests)
-        console.print()
+    # 3. Reporter
+    reporter = Reporter(
+        fmt=config.output_format,
+        dest=config.output_file,
+        show_all=config.show_all,
+        exploitable_only=config.exploitable_only,
+    )
 
-        # 3. Reporter
-        reporter = Reporter(
-            fmt=config.output_format,
-            dest=config.output_file,
-            show_all=config.show_all,
-            exploitable_only=config.exploitable_only,
-        )
+    # 4. Fan out
+    semaphore = asyncio.Semaphore(config.concurrency)
+    interesting_count = 0
 
-        # 4. Fan out
-        semaphore = asyncio.Semaphore(config.concurrency)
-        interesting_count = 0
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(bar_width=40),
+        TextColumn("[bold]{task.completed}/{task.total}[/]"),
+        TextColumn("[dim]│[/]"),
+        TimeElapsedColumn(),
+        TextColumn("[dim]│[/]"),
+        TextColumn("[bold yellow]⚑ {task.fields[hits]}[/]"),
+        console=console,
+    ) as progress:
+        task_id = progress.add_task("Fuzzing", total=total_requests, hits=0)
 
-        with Progress(
-            SpinnerColumn(),
-            TextColumn("[progress.description]{task.description}"),
-            BarColumn(bar_width=40),
-            TextColumn("[bold]{task.completed}/{task.total}[/]"),
-            TextColumn("[dim]│[/]"),
-            TimeElapsedColumn(),
-            TextColumn("[dim]│[/]"),
-            TextColumn("[bold yellow]⚑ {task.fields[hits]}[/]"),
-            console=console,
-        ) as progress:
-            task_id = progress.add_task("Fuzzing", total=total_requests, hits=0)
-
-            async def _fuzz_one(hdr: str, strategy: str, payload: str) -> None:
-                nonlocal interesting_count
-                result = await send_fuzzed(
-                    config, session, hdr, strategy, payload, semaphore,
+        async def _fuzz_one(hdr: str, strategy: str, payload: str) -> None:
+            nonlocal interesting_count
+            if config.raw:
+                result = await send_fuzzed_raw(
+                    config, hdr, strategy, payload, semaphore,
                 )
-                analyze(result, baseline, config)
-                reporter.record(result)
-                if result.interesting:
-                    interesting_count += 1
-                progress.update(task_id, advance=1, hits=interesting_count)
+            else:
+                result = await send_fuzzed(
+                    config, _session, hdr, strategy, payload, semaphore,
+                )
+            analyze(result, baseline, config)
+            reporter.record(result)
+            if result.interesting:
+                interesting_count += 1
+            progress.update(task_id, advance=1, hits=interesting_count)
 
-            tasks = [
-                _fuzz_one(hdr, strategy, payload)
-                for hdr in header_names
-                for strategy, payload in payload_list
-            ]
+        tasks = [
+            _fuzz_one(hdr, strategy, payload)
+            for hdr in header_names
+            for strategy, payload in payload_list
+        ]
 
-            # Process in chunks to avoid overwhelming memory for huge runs
-            chunk_size = max(config.concurrency * 10, 200)
-            for i in range(0, len(tasks), chunk_size):
-                await asyncio.gather(*tasks[i : i + chunk_size])
+        # Process in chunks to avoid overwhelming memory for huge runs
+        chunk_size = max(config.concurrency * 10, 200)
+        for i in range(0, len(tasks), chunk_size):
+            await asyncio.gather(*tasks[i : i + chunk_size])
 
-        console.print()
+    console.print()
 
-        # 5. Report
-        reporter.write_summary(baseline)
+    # 5. Cleanup & report
+    if not config.raw:
+        await _session.close()
+    reporter.write_summary(baseline)
